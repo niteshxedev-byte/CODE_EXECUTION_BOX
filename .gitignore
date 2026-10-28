@@ -1,2 +1,4 @@
 /target
-tests
+*.log
+tests/__pycache__/
+.env
