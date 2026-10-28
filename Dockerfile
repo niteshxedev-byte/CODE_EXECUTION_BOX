@@ -46,7 +46,7 @@ RUN dnf -y install --setopt=install_weak_deps=False \
         nodejs \
         gcc gcc-c++ make \
         bash \
-        java-21-openjdk-headless \
+        java-21-openjdk-devel \
         rust cargo \
         libseccomp \
         glibc glibc-common \
