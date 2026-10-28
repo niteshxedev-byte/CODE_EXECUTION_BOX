@@ -15,6 +15,8 @@ services:
     environment:
       - RUST_LOG=info
       - JOBS_ROOT=/var/lib/code_editor_engine_jobs
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:3001,http://192.168.31.127:3001}
+      - AUTH_TOKEN=${AUTH_TOKEN:-dev-token}
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.code-editor-engine.loadbalancer.server.port=3000"
@@ -24,4 +26,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-

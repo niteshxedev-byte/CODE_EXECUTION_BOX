@@ -4,9 +4,12 @@ set -euo pipefail
 CONTAINER_NAME="code-editor-engine"
 IMAGE_NAME="code-editor-engine:latest"
 PORT="3000"
+PUBLIC_URL="${1:-${PUBLIC_URL:-http://localhost:3001,http://192.168.31.127:3001}}"
+AUTH_TOKEN="${AUTH_TOKEN:-dev-token}"
 
 echo "========================================================"
 echo "  CodeEditorENGINE - Linux Mint / Docker Startup"
+echo "  Public URL Lockdown: $PUBLIC_URL"
 echo "========================================================"
 
 # 1. Check for Docker
@@ -34,12 +37,14 @@ else
     docker build -t "$IMAGE_NAME" .
 fi
 
-# 5. Start container with required host sandbox permissions
-echo "[3/4] Launching container with cgroup v2 & host port mapping..."
+# 5. Start container with required host sandbox permissions & URL Auth
+echo "[3/4] Launching container with URL auth & cgroup delegation..."
 docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     -p "${PORT}:3000" \
+    -e PUBLIC_URL="$PUBLIC_URL" \
+    -e AUTH_TOKEN="$AUTH_TOKEN" \
     --privileged \
     --cgroupns=host \
     -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
@@ -56,6 +61,7 @@ for i in $(seq 1 "$MAX_RETRIES"); do
         echo "  CodeEditorENGINE is RUNNING and HEALTHY!"
         echo "  URL: http://localhost:${PORT}"
         echo "  Health: http://localhost:${PORT}/health"
+        echo "  Protected by URL Auth: Only requests from $PUBLIC_URL are accepted."
         echo "========================================================"
         echo ""
         curl -s "http://127.0.0.1:${PORT}/health"
@@ -69,4 +75,3 @@ echo ""
 echo "WARNING: Health check did not pass within 30 seconds. Checking container logs:"
 docker logs --tail 30 "$CONTAINER_NAME"
 exit 1
-

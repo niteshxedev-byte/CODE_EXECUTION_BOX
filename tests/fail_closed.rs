@@ -137,3 +137,18 @@ fn test_anti_toctou_fd_verification_window() {
     bwrap_file.read_to_end(&mut bwrap_content).unwrap();
     assert_eq!(bwrap_content, b"BWRAP_AUTHENTIC_ELF");
 }
+
+#[test]
+fn test_url_auth_config_parsing() {
+    unsafe {
+        std::env::set_var("PUBLIC_URL", "http://myfrontend.com:3001,https://app.editor.io");
+        std::env::set_var("AUTH_TOKEN", "super-secret-token");
+    }
+
+    let state = AppState::new();
+    assert!(state.allowed_origins.contains(&"http://myfrontend.com:3001".to_string()));
+    assert!(state.allowed_origins.contains(&"https://app.editor.io".to_string()));
+    assert!(state.allowed_hosts.contains(&"myfrontend.com:3001".to_string()));
+    assert!(state.allowed_hosts.contains(&"app.editor.io".to_string()));
+    assert_eq!(state.auth_token, Some("super-secret-token".to_string()));
+}

@@ -10,6 +10,7 @@ ENGINE_CGROUP="${ENGINE_CGROUP:-/sys/fs/cgroup/code-editor-engine-${RAND_SUFFIX:
 
 # Clean up cgroup scope when the container shuts down
 cleanup() {
+    rmdir "$ENGINE_CGROUP/server" 2>/dev/null || true
     rmdir "$ENGINE_CGROUP" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -39,6 +40,12 @@ if [ -w /sys/fs/cgroup/cgroup.controllers ]; then
         fi
     done
 
+    # Move entrypoint process into $ENGINE_CGROUP/server BEFORE dropping root privileges.
+    # This ensures that when UID 10001 moves child processes into sibling scopes (cg_e_xxx, cg_probe_6),
+    # the common ancestor is $ENGINE_CGROUP (owned by UID 10001), preventing EACCES (os error 13).
+    mkdir -p "$ENGINE_CGROUP/server"
+    echo "$$" > "$ENGINE_CGROUP/server/cgroup.procs"
+
     chown -R "$ENGINE_UID:$ENGINE_GID" "$ENGINE_CGROUP"
     chmod 0755 "$ENGINE_CGROUP"
 else
@@ -49,6 +56,23 @@ export CGROUP_BASE="$ENGINE_CGROUP"
 export JOBS_ROOT="${JOBS_ROOT:-/var/lib/code_editor_engine_jobs}"
 
 # ---------------------------------------------------------------------------
+# URL Authentication & Origin Lockdown
+# ---------------------------------------------------------------------------
+if [ -z "${PUBLIC_URL:-}" ] && [ -z "${ALLOWED_ORIGIN:-}" ]; then
+    echo "=========================================================================="
+    echo "NOTICE: No PUBLIC_URL was provided. Defaulting to: http://localhost:3000,http://localhost:3001"
+    echo "To lock down access to your frontend, run docker with:"
+    echo "  -e PUBLIC_URL=http://your-frontend-domain-or-ip:port"
+    echo "=========================================================================="
+    export PUBLIC_URL="http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000"
+else
+    echo "=========================================================================="
+    echo "  URL AUTHENTICATION ACTIVE: Restricting all access to: ${PUBLIC_URL:-${ALLOWED_ORIGIN:-}}"
+    echo "  Requests from any other URL or origin will be blocked with 403 Forbidden."
+    echo "=========================================================================="
+fi
+
+# ---------------------------------------------------------------------------
 # Drop privileges and exec the engine.
 # ---------------------------------------------------------------------------
 exec setpriv \
@@ -57,4 +81,3 @@ exec setpriv \
     --init-groups \
     --no-new-privs \
     /usr/local/bin/code-editor-engine "$@"
-
