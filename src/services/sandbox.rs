@@ -566,24 +566,51 @@ print("PROBES_2_3_4_5_7_8_9_10_OK")
             }
 
             let procs_path = test_cg.join("cgroup.procs");
-            let bpf_file6 = File::open(bpf_path)
-                .map_err(|e| format!("Failed to open BPF file for probe 6: {e}"))?;
+            let c_path = match std::ffi::CString::new(procs_path.to_string_lossy().as_bytes()) {
+                Ok(c) => c,
+                Err(e) => {
+                    Self::cleanup_cgroup_scope(&Some(test_cg));
+                    return Err(format!("Invalid cgroup path for probe 6: {e}"));
+                }
+            };
+            let cg_fd = unsafe { libc::open(c_path.as_ptr(), libc::O_WRONLY | libc::O_CLOEXEC) };
+            if cg_fd < 0 {
+                let err = std::io::Error::last_os_error();
+                Self::cleanup_cgroup_scope(&Some(test_cg));
+                return Err(format!("Probe 6 failed: cannot open cgroup.procs: {err}"));
+            }
+
+            let bpf_file6 = match File::open(bpf_path) {
+                Ok(f) => f,
+                Err(e) => {
+                    unsafe { libc::close(cg_fd) };
+                    Self::cleanup_cgroup_scope(&Some(test_cg));
+                    return Err(format!("Failed to open BPF file for probe 6: {e}"));
+                }
+            };
             let seccomp_fd6 = bpf_file6.into_raw_fd();
 
             let fork_script = r#"
-import os, time
+import os, time, signal
 pids = []
 hit_eagain = False
 for _ in range(50):
     try:
         pid = os.fork()
         if pid == 0:
-            time.sleep(0.5)
+            time.sleep(1)
             os._exit(0)
         pids.append(pid)
-    except (BlockingIOError, OSError) as e:
+    except (BlockingIOError, OSError):
         hit_eagain = True
         break
+
+for pid in pids:
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+
 assert hit_eagain, "Probe 6 failed: fork bomb was not throttled by pids.max"
 print("PROBE_6_OK")
 "#;
@@ -604,8 +631,39 @@ print("PROBE_6_OK")
 
             unsafe {
                 cmd6.pre_exec(move || {
-                    let pid = std::process::id().to_string();
-                    let _ = std::fs::write(&procs_path, pid.as_bytes());
+                    let pid = libc::getpid();
+                    let mut buf = [0u8; 32];
+                    let mut idx = 31;
+                    buf[idx] = b'\n';
+                    let mut n = pid;
+                    if n == 0 {
+                        idx -= 1;
+                        buf[idx] = b'0';
+                    } else {
+                        while n > 0 {
+                            idx -= 1;
+                            buf[idx] = b'0' + (n % 10) as u8;
+                            n /= 10;
+                        }
+                    }
+                    let slice = &buf[idx..];
+                    let mut written = 0;
+                    while written < slice.len() {
+                        let res = libc::write(
+                            cg_fd,
+                            slice[written..].as_ptr() as *const libc::c_void,
+                            slice.len() - written,
+                        );
+                        if res < 0 {
+                            let err = std::io::Error::last_os_error();
+                            if err.raw_os_error() == Some(libc::EINTR) {
+                                continue;
+                            }
+                            return Err(err);
+                        }
+                        written += res as usize;
+                    }
+
                     if seccomp_fd6 != 3 {
                         libc::dup2(seccomp_fd6, 3);
                         libc::close(seccomp_fd6);
@@ -617,6 +675,7 @@ print("PROBE_6_OK")
             }
 
             let out6 = cmd6.output();
+            unsafe { libc::close(cg_fd); };
             Self::cleanup_cgroup_scope(&Some(test_cg));
 
             if let Ok(output) = out6 {
