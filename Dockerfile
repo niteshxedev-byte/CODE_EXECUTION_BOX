@@ -3,15 +3,19 @@
 # ---------------------------------------------------------------------------
 # Stage 1: build the engine
 # ---------------------------------------------------------------------------
-FROM rust:1.85-slim-bookworm AS builder
+FROM rust:1-slim-bookworm AS builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        pkg-config \
+        libseccomp-dev \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 # Warm the dependency cache independently of source changes
-RUN mkdir src && echo 'fn main(){}' > src/main.rs \
+RUN mkdir -p src && echo 'fn main(){}' > src/main.rs && touch src/lib.rs \
     && cargo build --release --locked \
     && rm -rf src
 COPY src ./src
-RUN touch src/main.rs && cargo build --release --locked \
+RUN touch src/main.rs src/lib.rs && cargo build --release --locked \
     && cp target/release/CodeEditorENGINE target/release/code-editor-engine
 
 # ---------------------------------------------------------------------------
@@ -86,4 +90,3 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 # Entrypoint runs as root only to provision the cgroup subtree, then drops
 # to uid 10001 before exec'ing the engine.
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-
