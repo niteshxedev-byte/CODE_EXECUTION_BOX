@@ -91,3 +91,4 @@ impl AppState {
         (origins, hosts, auth_token)
     }
 }
+

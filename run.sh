@@ -75,3 +75,4 @@ echo ""
 echo "WARNING: Health check did not pass within 30 seconds. Checking container logs:"
 docker logs --tail 30 "$CONTAINER_NAME"
 exit 1
+

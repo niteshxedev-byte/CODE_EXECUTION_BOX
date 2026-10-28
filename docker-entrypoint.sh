@@ -81,3 +81,4 @@ exec setpriv \
     --init-groups \
     --no-new-privs \
     /usr/local/bin/code-editor-engine "$@"
+
