@@ -82,6 +82,8 @@ RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh \
 
 WORKDIR /app
 EXPOSE 3000
+LABEL traefik.enable="true"
+LABEL traefik.http.services.code-editor-engine.loadbalancer.server.port="3000"
 
 # Runs healthcheck unprivileged as engine user (uid 10001) without elevated root caps
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
